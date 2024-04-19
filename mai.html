@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login with RFID | Firebase</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Additional CSS for styling */
+        .container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .inputBox {
+            margin-bottom: 20px;
+        }
+
+        .inputBox input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        #submitButton {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        #submitButton:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+
+        .alert {
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #2196f3;
+            color: white;
+            text-align: center;
+        }
+
+        #clock {
+            font-size: 18px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        #downloadBtn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            text-align: center;
+            text-decoration: none;
+        }
+
+        /* New CSS for YCCE ATTENDANCE heading */
+        .heading {
+            font-size: 24px;
+            font-weight: bold;
+            border: 2px solid black;
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- YCCE ATTENDANCE heading -->
+        <div class="heading">YCCE ATTENDANCE</div>
+
+        <form id="loginForm">
+            <div class="alert" id="alert">Scan RFID card to login</div>
+
+            <div class="inputBox">
+                <input type="text" id="name" placeholder="Your Name" />
+            </div>
+
+            <div class="inputBox">
+                <input type="email" id="emailid" placeholder="Your College ID" />
+            </div>
+
+            <div class="inputBox">
+                <button type="submit" id="submitButton" disabled>Submit</button>
+            </div>
+        </form>
+
+        <!-- Login success message -->
+        <div id="loginSuccess" style="display: none; text-align: center; color: green; font-weight: bold;">Login successful</div>
+
+        <!-- Clock -->
+        <div id="clock">Time left: <span id="timer">5:00</span></div>
+
+        <!-- Download Button -->
+        <a id="downloadBtn" href="#" download="login_data.xlsx" style="display: none;">Download Login Data</a>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.8.0/firebase-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.8.0/firebase-database.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.0/xlsx.full.min.js"></script>
+    <script>
+                  const firebaseConfig = {
+            //   copy your firebase config informations
+            apiKey: "AIzaSyCoZVA_XuKu1e6Qu3Mjne_aTy8kTsZetnI",
+            authDomain: "present-2690e.firebaseapp.com",
+            databaseURL: "https://present-2690e-default-rtdb.firebaseio.com",
+            projectId: "present-2690e",
+            storageBucket: "present-2690e.appspot.com",
+            messagingSenderId: "463649430669",
+            appId: "1:463649430669:web:9f6dcb4af8d974e97e96c4",
+            measurementId: "G-YKD3EG2EHW"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Reference to the "scanned-cards" node in Firebase
+        var scannedCardsDB = firebase.database().ref("scanned-cards");
+
+        // Reference to the "Login Page" node in Firebase
+        var loginPageDB = firebase.database().ref("Login Page");
+
+        // Variable to store the last card data and timer
+        let lastCardData = null;
+        let timer = null;
+        let cardCounter = 0;
+
+        // Listen for changes in the database
+        scannedCardsDB.limitToLast(1).on('child_added', function (snapshot) {
+            lastCardData = snapshot.val();
+            cardCounter++;
+            if (cardCounter === 2) {
+                enableLogin();
+            }
+        });
+
+        // Function to enable login button when card data is received within recent time
+        function enableLogin() {
+            clearInterval(timer); // Clear previous timer
+            document.getElementById("submitButton").disabled = false; // Enable submit button
+            document.getElementById("alert").innerText = "RFID card detected. You can now login."; // Update alert message
+            timer = setInterval(updateTimer, 1000); // Update timer every second
+        }
+
+        // Function to update and display timer
+        function updateTimer() {
+            const minutes = Math.floor((timerDuration - (Date.now() - startTime)) / 60000);
+            const seconds = Math.floor((timerDuration - (Date.now() - startTime)) / 1000) % 60;
+            document.getElementById("timer").textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+            // If time is up, disable submit button and reset timer
+            if (Date.now() - startTime >= timerDuration) {
+                clearInterval(timer);
+                document.getElementById("submitButton").disabled = true;
+                document.getElementById("alert").innerText = "Time's up!";
+                cardCounter = 0; // Reset card counter
+            }
+        }
+
+        // Event listener for form submission
+        document.getElementById("loginForm").addEventListener("submit", function (e) {
+            e.preventDefault();
+
+            var name = getElementVal("name");
+            var emailid = getElementVal("emailid");
+
+            // Push login details to "Login Page" node in Firebase
+            loginPageDB.push({
+                name: name,
+                emailid: emailid,
+                timestamp: firebase.database.ServerValue.TIMESTAMP // Save current timestamp
+            });
+
+            // Display success message or redirect user after submitting login details
+            document.getElementById("loginSuccess").style.display = "block"; // Display login success message
+            document.getElementById("submitButton").disabled = true; // Disable login button
+
+            // Reset the form
+            document.getElementById("Login Page").reset();
+        });
+
+        // Function to get element value by ID
+        const getElementVal = (id) => {
+            return document.getElementById(id).value;
+        };
+
+        // Function to export login data to Excel
+        function exportToExcel(data) {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Login Data");
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "login_data.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 0);
+        }
+
+        // Event listener for download button
+        document.getElementById("downloadBtn").addEventListener("click", function () {
+            loginPageDB.once("value", function (snapshot) {
+                const data = [];
+                snapshot.forEach(function (childSnapshot) {
+                    data.push(childSnapshot.val());
+                });
+                exportToExcel(data);
+            });
+        });
+
+        // Constants for timer functionality
+        const timerDuration = 300000; // 5 minutes
+        const startTime = Date.now();
+    </script>
+</body>
+
+</html>
